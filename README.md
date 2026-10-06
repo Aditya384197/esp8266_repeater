@@ -13,7 +13,9 @@ Default access point: `ESP-Repeater` / password `12345678` (change it in the das
 - Live status: connected state + last disconnect reason, RSSI (dBm, %), quality, approx. distance, channel, IP, clients, live speed, totals, uptime, free heap
 - The AP is never restarted while running: if the router drops or changes channel only the uplink reconnects (clients stay associated); uplink watchdog reconnects if it stays down for 25 s
 - No BSSID lock, so the repeater follows the router across channel changes
-- Hold the FLASH button (GPIO0) for 5 s = factory reset
+- Stall detector: if the uplink is stuck (upload without any download for 15 s) only the uplink reconnects
+- NAT table tuned (TCP idle 15 min, UDP 15 s), out-of-memory guard, crash-loop safe mode
+- Serial log: **115200 baud** (reset reason, uplink events)
 
 ## Build
 Push to GitHub. `.github/workflows/build.yml` builds the firmware and commits it into `firmware/`.

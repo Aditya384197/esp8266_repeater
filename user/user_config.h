@@ -1,7 +1,7 @@
 #ifndef _USER_CONFIG_H_
 #define _USER_CONFIG_H_
 
-#define APP_VERSION        "R1.0"
+#define APP_VERSION        "R1.1"
 
 /* default access point (used on first boot and after factory reset) */
 #define AP_DEFAULT_SSID    "ESP-Repeater"

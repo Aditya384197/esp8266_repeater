@@ -84,7 +84,8 @@ BUILD_DIR	:= $(addprefix $(BUILD_BASE)/,$(MODULES))
 SDK_LIBDIR	:= $(addprefix $(SDK_BASE)/,$(SDK_LIBDIR))
 SDK_INCDIR	:= $(addprefix -I$(SDK_BASE)/,$(SDK_INCDIR))
 
-SRC		:= $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.c))
+# explicit list: stray old files left in user/ (e.g. from an older version) are never compiled
+SRC		:= user/user_main.c user/web.c user/cfg.c user/rf_init.c
 OBJ		:= $(patsubst %.c,$(BUILD_BASE)/%.o,$(SRC))
 
 # mdns.o is absent from liblwip_open_napt.a; compile from esp-open-lwip source

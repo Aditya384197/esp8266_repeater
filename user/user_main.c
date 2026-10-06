@@ -30,6 +30,11 @@
 #include "app.h"
 
 
+/* UART0 divider: SDK uses (APB_CLK * 2) / baud. Use the SDK macro if it exists. */
+#ifndef UART_CLK_FREQ
+#define UART_CLK_FREQ (80000000UL * 2)
+#endif
+
 cfg_t cfg;
 uint8_t app_last_disc_reason;
 uint64_t app_bytes_down, app_bytes_up;
@@ -39,7 +44,11 @@ uint32_t app_uptime_s;
 static uint64_t last_down, last_up;
 static bool ap_ip_done;
 static uint8_t uplink_down_s;
-static uint8_t button_s;
+static uint8_t stall_s;
+static uint8_t stall_cooldown_s;
+static uint8_t low_heap_s;
+static bool safe_mode;
+static uint64_t stall_ref_down, stall_ref_up;
 static uint8_t pending_action;
 static os_timer_t tick_timer;
 static os_timer_t action_timer;
@@ -155,6 +164,7 @@ static void ICACHE_FLASH_ATTR ap_ip_config(void)
     struct netif *nif;
     ip_addr_t dns;
 
+    os_memset(&lease, 0, sizeof(lease));
     /* the AP netif is the first one that is not number 0 */
     for (nif = netif_list; nif != NULL && nif->num == 0; nif = nif->next)
         ;
@@ -208,6 +218,8 @@ static void ICACHE_FLASH_ATTR wifi_event_cb(System_Event_t *evt)
         dhcps_set_DNS(&dns);
         hook_sta_netif(evt->event_info.got_ip.ip.addr);
         enable_nat_on_ap();
+        if (!safe_mode)
+            wifi_set_sleep_type(NONE_SLEEP_T); /* no modem sleep: no latency spikes */
         os_printf("uplink: ip " IPSTR " gw " IPSTR "\r\n", IP2STR(&evt->event_info.got_ip.ip), IP2STR(&evt->event_info.got_ip.gw));
         break;
 
@@ -284,34 +296,60 @@ static void ICACHE_FLASH_ATTR tick_cb(void *arg)
     if (!ap_ip_done)
         ap_ip_config();
 
-    /* uplink watchdog: if there is no IP for 25 s, restart the station connection */
+    /* uplink watchdog: no IP for 25 s -> restart the station connection only */
     if (cfg.sta_ssid[0] != 0 && pending_action == 0)
     {
         if (wifi_station_get_connect_status() == STATION_GOT_IP)
         {
             uplink_down_s = 0;
+
+            /* stall detector: we send a lot upstream but nothing comes back for
+               15 s -> the station link is stuck (known ESP8266 behaviour):
+               reconnect the uplink, clients stay on the AP */
+            if (stall_cooldown_s > 0)
+            {
+                stall_cooldown_s--;
+                stall_s = 0;
+            }
+            else if (++stall_s >= 15)
+            {
+                uint64_t du = app_bytes_up - stall_ref_up;
+                uint64_t dd = app_bytes_down - stall_ref_down;
+                stall_s = 0;
+                if (du > 20000 && dd < 500)
+                {
+                    os_printf("uplink stalled (up %d down %d) -> reconnect\r\n", (int)du, (int)dd);
+                    stall_cooldown_s = 60;
+                    app_reconnect_later(10);
+                }
+            }
+            if (stall_s == 0)
+            {
+                stall_ref_up = app_bytes_up;
+                stall_ref_down = app_bytes_down;
+            }
         }
-        else if (++uplink_down_s >= 25)
+        else
         {
-            uplink_down_s = 0;
-            os_printf("uplink watchdog: reconnecting\r\n");
-            app_reconnect_later(10);
+            stall_s = 0;
+            if (++uplink_down_s >= 25)
+            {
+                uplink_down_s = 0;
+                os_printf("uplink watchdog: reconnecting\r\n");
+                app_reconnect_later(10);
+            }
         }
     }
 
-    /* hold the FLASH button (GPIO0) for 5 s: factory reset */
-    if (GPIO_INPUT_GET(0) == 0)
+    /* out of memory guard: restart cleanly instead of freezing */
+    if (system_get_free_heap_size() < 3000)
     {
-        if (++button_s >= 5)
-        {
-            cfg_defaults(&cfg);
-            cfg_save(&cfg);
+        if (++low_heap_s >= 5)
             system_restart();
-        }
     }
     else
     {
-        button_s = 0;
+        low_heap_s = 0;
     }
 }
 
@@ -326,27 +364,72 @@ static void ICACHE_FLASH_ATTR init_done_cb(void)
     os_timer_arm(&tick_timer, 1000, 1);
 }
 
+/* crash-loop detection: after 3 consecutive crashes start in safe mode */
+#define RTC_BLOCK 64
+typedef struct
+{
+    uint32_t magic;
+    uint32_t crashes;
+} rtc_t;
+
+static void ICACHE_FLASH_ATTR check_boot(void)
+{
+    rtc_t r;
+    struct rst_info *ri = system_get_rst_info();
+    int crashed = (ri != NULL && (ri->reason == REASON_WDT_RST || ri->reason == REASON_EXCEPTION_RST || ri->reason == REASON_SOFT_WDT_RST));
+
+    os_memset(&r, 0, sizeof(r));
+    system_rtc_mem_read(RTC_BLOCK, &r, sizeof(r));
+    if (r.magic != 0x52504331UL)
+    {
+        r.magic = 0x52504331UL;
+        r.crashes = 0;
+    }
+    if (crashed)
+        r.crashes++;
+    else
+        r.crashes = 0;
+    system_rtc_mem_write(RTC_BLOCK, &r, sizeof(r));
+
+    if (ri != NULL)
+        os_printf("reset reason %d (exccause %d epc1 0x%x), crashes in a row: %d\r\n", (int)ri->reason, (int)ri->exccause, (unsigned)ri->epc1, (int)r.crashes);
+    if (r.crashes >= 3)
+    {
+        safe_mode = true;
+        os_printf("SAFE MODE (repeated crashes): 80 MHz CPU, defaults\r\n");
+    }
+}
+
 void ICACHE_FLASH_ATTR user_init(void)
 {
-    uart_div_modify(0, 80000000UL / 115200);
+    uart_div_modify(0, UART_CLK_FREQ / 115200);
     os_printf("\r\n\r\nESP8266 WiFi repeater %s\r\n", APP_VERSION);
 
     gpio_init();
-    system_update_cpu_freq(160);
+    check_boot();
 
     cfg_load(&cfg);
 
+    /* NAT: 512 entries. Idle TCP entries live 15 min (default 30), UDP 15 s
+       (default 2 s would cut VoIP/games), so the table does not fill up. */
     ip_napt_init(IP_NAPT_MAX, IP_PORTMAP_MAX);
+    ip_napt_set_tcp_timeout(900);
+    ip_napt_set_udp_timeout(15);
 
-    wifi_set_opmode(STATIONAP_MODE);
-    wifi_set_phy_mode(PHY_MODE_11N);
-    wifi_set_sleep_type(NONE_SLEEP_T);   /* no modem sleep: full speed, no latency spikes */
+    /* same order as the proven original firmware */
     wifi_set_event_handler_cb(wifi_event_cb);
-
-    ap_apply_config();
     if (cfg.sta_ssid[0] != 0)
         sta_apply_config();
     wifi_station_set_auto_connect(cfg.sta_ssid[0] != 0 ? 1 : 0);
 
+    wifi_set_opmode(STATIONAP_MODE);
+    ap_apply_config();
+
+    wifi_set_phy_mode(PHY_MODE_11N);
+
     system_init_done_cb(init_done_cb);
+
+    if (!safe_mode)
+        system_update_cpu_freq(160);
+    os_printf("free heap %d\r\n", (int)system_get_free_heap_size());
 }

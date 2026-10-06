@@ -3,7 +3,7 @@
 #define _WEB_PAGE_H_
 
 #define WEB_PAGE \
-"HTTP/1.0 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: 7009\r\nConnection: close\r\n\r\n" \
+"HTTP/1.0 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: 6934\r\nConnection: close\r\n\r\n" \
 "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>WiFi Repeater</title>\n" \
 "<style>\n" \
 "body{font-family:sans-serif;margin:0;background:#101418;color:#e8ecf0}\n" \
@@ -55,7 +55,7 @@
 "<div class=\"n\">AP changes need a restart. Default: ESP-Repeater / 12345678</div></div>\n" \
 "<div class=\"c\"><h2>Device</h2>\n" \
 "<button onclick=\"RB()\">Restart</button><button class=\"r\" onclick=\"FR()\">Factory reset</button>\n" \
-"<div class=\"n\">Hold the FLASH button (GPIO0) for 5 s = factory reset.</div></div>\n" \
+"</div>\n" \
 "</div><div id=\"m\"></div>\n" \
 "<script>\n" \
 "var $=function(i){return document.getElementById(i)},F=0,BUSY=0;\n" \
