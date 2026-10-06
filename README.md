@@ -8,7 +8,7 @@ Dashboard: **http://192.168.4.1** (connect to the repeater's WiFi first)
 
 Default access point: `ESP-Repeater` / password `12345678` (change it in the dashboard).
 
-## Features
+## Feature
 - Uplink SSID/password, scan for networks, Save / Save & Connect / Restart / Factory reset
 - Live status: connected state + last disconnect reason, RSSI (dBm, %), quality, approx. distance, channel, IP, clients, live speed, totals, uptime, free heap
 - The AP is never restarted while running: if the router drops or changes channel only the uplink reconnects (clients stay associated); uplink watchdog reconnects if it stays down for 25 s
