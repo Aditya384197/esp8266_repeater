@@ -37,7 +37,7 @@ ESPTOOLOPTS	= -ff 40m -fm dio -fs 32m
 TARGET		= app
 
 # which modules (subdirectories) of the project to include in compiling
-MODULES		= user
+MODULES		= driver user mqtt easygpio
 EXTRA_INCDIR    = include $(BUILD_AREA)/esp-open-sdk/esp-open-lwip/include
 #EXTRA_INCDIR    = include
 
@@ -49,6 +49,10 @@ LIBS		= c gcc hal pp phy net80211 lwip_open_napt wpa wpa2 main crypto
 # compiler flags using during compilation of source files
 CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH -DLWIP_OPEN_SRC -DUSE_OPTIMIZE_PRINTF
 
+VARIANT ?= default
+ifeq ($(VARIANT),bridge)
+    CFLAGS += -include user/user_config_bridge.h
+endif
 
 # linker flags used to generate the main object file
 LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static -L. -L$(SDK_BASE)/ld
@@ -84,8 +88,7 @@ BUILD_DIR	:= $(addprefix $(BUILD_BASE)/,$(MODULES))
 SDK_LIBDIR	:= $(addprefix $(SDK_BASE)/,$(SDK_LIBDIR))
 SDK_INCDIR	:= $(addprefix -I$(SDK_BASE)/,$(SDK_INCDIR))
 
-# explicit list: stray old files left in user/ (e.g. from an older version) are never compiled
-SRC		:= user/user_main.c user/web.c user/cfg.c user/rf_init.c
+SRC		:= $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.c))
 OBJ		:= $(patsubst %.c,$(BUILD_BASE)/%.o,$(SRC))
 
 # mdns.o is absent from liblwip_open_napt.a; compile from esp-open-lwip source
