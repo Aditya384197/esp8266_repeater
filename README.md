@@ -1,4 +1,4 @@
-# ESP8266 NAT WiFi Repeater - improved build
+# ESP8266 NAT WiFi - improved build
 
 Based on the proven esp_wifi_repeater NAT firmware (Martin Ger). Changes:
 
