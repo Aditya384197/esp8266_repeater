@@ -68,8 +68,8 @@ jobs:
         with:
           name: ESP8266_Repeater_firmware
           path: |
-            Firmware/ESP8266_Repeater_FULL_flash_at_0x0.bin
-            Firmware/0x00000.bin
-            Firmware/0x02000.bin
-            Firmware/0x82000.bin
-            Firmware/sha1sums
+            firmware/ESP8266_Repeater_FULL_flash_at_0x0.bin
+            firmware/0x00000.bin
+            firmware/0x02000.bin
+            firmware/0x82000.bin
+            firmware/sha1sums
